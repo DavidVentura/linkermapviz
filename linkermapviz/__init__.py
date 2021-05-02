@@ -89,7 +89,7 @@ def parseSections (fd):
 
     return sections
 
-def main(fname, ignore_files):
+def main(fname, ignore_files, n_largest):
     sections = parseSections(open(fname, 'r'))
     if sections is None:
         print ('start of memory config not found, did you invoke the compiler/linker with LANG=C?')
@@ -110,6 +110,9 @@ def main(fname, ignore_files):
 
         grouped_obj = [GroupedObj(k, size) for k, size in groupsize.items() if k not in ignore_files]
         grouped_obj.sort(reverse=True, key=lambda x: x.size)
+        for i in range(0, n_largest):
+            o = grouped_obj[i]
+            print(f'{o.size:>8} {o.path}')
         values = list (map (lambda x: x.size, grouped_obj))
         totalsize = sum (values)
 
@@ -181,9 +184,10 @@ def parse_args():
     linkermapviz pinetime-app-1.0.0.map --ignore-files liblvgl.a libnimble.a
     ''')
     parser.add_argument("fname")
+    parser.add_argument("--print-largest", default=10, help="Print the N largest objects", type=int)
     parser.add_argument("--ignore-files", nargs='+', help="files to ignore, example: liblvgl.a libnimble.a")
     args = parser.parse_args()
-    main(args.fname, args.ignore_files or [])
+    main(args.fname, args.ignore_files or [], args.print_largest)
 
 if __name__ == '__main__':
     parse_args()
