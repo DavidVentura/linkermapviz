@@ -118,7 +118,6 @@ def main ():
         width = 1000 
         height = 1000
         values = squarify.normalize_sizes (values, width, height)
-        rects = squarify.squarify(values, x, y, width, height)
         padded_rects = squarify.padded_squarify(values, x, y, width, height)
 
         # plot with bokeh
