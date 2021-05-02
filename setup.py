@@ -14,7 +14,7 @@ setup(
     ],
     entry_points={
     'console_scripts': [
-            'linkermapviz = linkermapviz:main',
+            'linkermapviz = linkermapviz:parse_args',
             ],
     },
 )

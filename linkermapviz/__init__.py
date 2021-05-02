@@ -1,5 +1,6 @@
 # vim: set fileencoding=utf8 :
 
+import argparse
 import sys, re, os
 from itertools import chain, groupby
 import squarify
@@ -88,8 +89,7 @@ def parseSections (fd):
 
     return sections
 
-def main ():
-    fname = sys.argv[1]
+def main(fname, ignore_files):
     sections = parseSections(open(fname, 'r'))
     if sections is None:
         print ('start of memory config not found, did you invoke the compiler/linker with LANG=C?')
@@ -108,7 +108,7 @@ def main ():
             groupsize[k] = size
         #objects.sort (reverse=True, key=lambda x: x.size)
 
-        grouped_obj = [GroupedObj(k, size) for k, size in groupsize.items() if k not in ['liblvgl.a', 'libnimble.a']]
+        grouped_obj = [GroupedObj(k, size) for k, size in groupsize.items() if k not in ignore_files]
         grouped_obj.sort(reverse=True, key=lambda x: x.size)
         values = list (map (lambda x: x.size, grouped_obj))
         totalsize = sum (values)
@@ -174,6 +174,17 @@ def main ():
         plots.append (p)
     show (column (*plots, sizing_mode="scale_width"))
 
+def parse_args():
+    parser = argparse.ArgumentParser(description="Parse a map file into a bokeh diagram", epilog='''
+    Example:
+
+    linkermapviz pinetime-app-1.0.0.map --ignore-files liblvgl.a libnimble.a
+    ''')
+    parser.add_argument("fname")
+    parser.add_argument("--ignore-files", nargs='+', help="files to ignore, example: liblvgl.a libnimble.a")
+    args = parser.parse_args()
+    main(args.fname, args.ignore_files or [])
+
 if __name__ == '__main__':
-    main()
+    parse_args()
 
