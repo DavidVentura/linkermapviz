@@ -36,7 +36,7 @@ def parseSections (fd):
     # skip until memory map is found
     found = False
     while True:
-        l = sys.stdin.readline ()
+        l = fd.readline ()
         if not l:
             break
         if l.strip () == 'Memory Configuration':
@@ -48,7 +48,7 @@ def parseSections (fd):
     # long section names result in a linebreak afterwards
     sectionre = re.compile ('(?P<section>.+?|.{14,}\n)[ ]+0x(?P<offset>[0-9a-f]+)[ ]+0x(?P<size>[0-9a-f]+)(?:[ ]+(?P<comment>.+))?\n+', re.I)
     subsectionre = re.compile ('[ ]{16}0x(?P<offset>[0-9a-f]+)[ ]+(?P<function>.+)\n+', re.I)
-    s = sys.stdin.read ()
+    s = fd.read ()
     pos = 0
     while True:
         m = sectionre.match (s, pos)
@@ -86,7 +86,8 @@ def parseSections (fd):
     return sections
 
 def main ():
-    sections = parseSections (sys.stdin)
+    fname = sys.argv[1]
+    sections = parseSections(open(fname, 'r'))
     if sections is None:
         print ('start of memory config not found, did you invoke the compiler/linker with LANG=C?')
         return
@@ -168,5 +169,5 @@ def main ():
     show (column (*plots, sizing_mode="scale_width"))
 
 if __name__ == '__main__':
-    main ()
+    main()
 
