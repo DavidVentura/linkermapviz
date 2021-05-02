@@ -7,8 +7,11 @@ import squarify
 from bokeh.plotting import figure, show, output_file, ColumnDataSource
 from bokeh.models import HoverTool, LabelSet
 from bokeh.models.mappers import CategoricalColorMapper
-from bokeh.palettes import Category10
+from bokeh.palettes import inferno
 from bokeh.layouts import column
+
+from collections import namedtuple
+GroupedObj = namedtuple('GroupedObj', 'path size')
 
 class Objectfile:
     def __init__ (self, section, offset, size, comment):
@@ -101,9 +104,13 @@ def main ():
         objects = s.children
         groupsize = {}
         for k, g in groupby (sorted (objects, key=lambda x: x.basepath), lambda x: x.basepath):
-            groupsize[k] = sum (map (lambda x: x.size, g))
-        objects.sort (reverse=True, key=lambda x: x.size)
-        values = list (map (lambda x: x.size, objects))
+            size = sum (map (lambda x: x.size, g))
+            groupsize[k] = size
+        #objects.sort (reverse=True, key=lambda x: x.size)
+
+        grouped_obj = [GroupedObj(k, size) for k, size in groupsize.items() if k not in ['liblvgl.a', 'libnimble.a']]
+        grouped_obj.sort(reverse=True, key=lambda x: x.size)
+        values = list (map (lambda x: x.size, grouped_obj))
         totalsize = sum (values)
 
         x = 0
@@ -123,10 +130,10 @@ def main ():
         recty = list (map (lambda x: x['y']+x['dy']/2, padded_rects))
         rectw = list (map (lambda x: x['dx'], padded_rects))
         recth = list (map (lambda x: x['dy'], padded_rects))
-        files = list (map (lambda x: x.basepath, objects))
-        size = list (map (lambda x: x.size, objects))
-        children = list (map (lambda x: ','.join (map (lambda x: x[1], x.children)) if x.children else x.section, objects))
-        legend = list (map (lambda x: '{} ({})'.format (x.basepath, groupsize[x.basepath]), objects))
+        files = list (map (lambda x: x.path, grouped_obj))
+        size = list (map (lambda x: x.size, grouped_obj))
+        #children = list (map (lambda x: ','.join (map (lambda x: x[1], x.children)) if x.children else x.section, grouped_obj))
+        legend = list (map (lambda x: '{} ({})'.format (x.path, x.size), grouped_obj))
         source = ColumnDataSource(data=dict(
             left=left,
             top=top,
@@ -136,14 +143,14 @@ def main ():
             height=recth,
             file=files,
             size=size,
-            children=children,
+#            children=children,
             legend=legend,
         ))
 
         hover = HoverTool(tooltips=[
             ("size", "@size"),
             ("file", "@file"),
-            ("symbol", "@children"),
+#            ("symbol", "@children"),
         ])
 
 
@@ -157,7 +164,7 @@ def main ():
         p.yaxis.visible = False
         p.ygrid.visible = False
 
-        palette = Category10[10]
+        palette = inferno(len(grouped_obj))
         mapper = CategoricalColorMapper (palette=palette, factors=allFiles)
         p.rect (x='x', y='y', width='width', height='height', source=source, color={'field': 'file', 'transform': mapper}, legend='legend')
 
