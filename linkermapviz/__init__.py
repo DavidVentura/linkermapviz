@@ -1,18 +1,8 @@
 # vim: set fileencoding=utf8 :
 
 import argparse
-import sys, re, os
-from itertools import chain, groupby
-import squarify
-
-from bokeh.plotting import figure, show, output_file, ColumnDataSource
-from bokeh.models import HoverTool, LabelSet
-from bokeh.models.mappers import CategoricalColorMapper
-from bokeh.palettes import inferno
-from bokeh.layouts import column
-
-from collections import namedtuple
-GroupedObj = namedtuple('GroupedObj', 'path size')
+import re, os
+from itertools import groupby
 
 class Objectfile:
     def __init__ (self, section, offset, size, comment):
@@ -89,93 +79,57 @@ def parseSections (fd):
 
     return sections
 
-def main(fname, ignore_files, n_largest):
+def measure_map(fname):
     sections = parseSections(open(fname, 'r'))
     if sections is None:
         print ('start of memory config not found, did you invoke the compiler/linker with LANG=C?')
         return
 
     sectionWhitelist = {'.text', '.data', '.bss', '.rodata'}
-    plots = []
     whitelistedSections = list (filter (lambda x: x.section in sectionWhitelist, sections))
-    allObjects = list (chain (*map (lambda x: x.children, whitelistedSections)))
-    allFiles = list (set (map (lambda x: x.basepath, allObjects)))
+    grouped_objects = {}
     for s in whitelistedSections:
-        objects = s.children
-        groupsize = {}
-        for k, g in groupby (sorted (objects, key=lambda x: x.basepath), lambda x: x.basepath):
+        for k, g in groupby (sorted (s.children, key=lambda x: x.basepath), lambda x: x.basepath):
             size = sum (map (lambda x: x.size, g))
-            groupsize[k] = size
-        #objects.sort (reverse=True, key=lambda x: x.size)
+            grouped_objects[k] = size
+    return grouped_objects
 
-        grouped_obj = [GroupedObj(k, size) for k, size in groupsize.items() if k not in ignore_files]
-        grouped_obj.sort(reverse=True, key=lambda x: x.size)
-        for i in range(0, n_largest):
-            o = grouped_obj[i]
-            print(f'{o.size:>8} {o.path}')
-        values = list (map (lambda x: x.size, grouped_obj))
-        totalsize = sum (values)
+def main(old_fname, new_fname):
+    old = measure_map(old_fname)
+    new = measure_map(new_fname)
+    total_new = sum(new.values())
+    total_old = sum(old.values())
+    diff = total_new-total_old
+    sign = "+" if diff > 0 else "-"
 
-        x = 0
-        y = 0
-        width = 1000 
-        height = 1000
-        values = squarify.normalize_sizes (values, width, height)
-        padded_rects = squarify.padded_squarify(values, x, y, width, height)
+    if diff == 0:
+        return
 
-        # plot with bokeh
-        output_file('linkermap.html', title='Linker map')
+    new_keys = new.keys() - old.keys()
+    shared_keys = set(new.keys()).intersection(old.keys())
+    old_keys = old.keys() - new.keys()
 
-        left = list (map (lambda x: x['x'], padded_rects))
-        top = list (map (lambda x: x['y'], padded_rects))
-        rectx = list (map (lambda x: x['x']+x['dx']/2, padded_rects))
-        recty = list (map (lambda x: x['y']+x['dy']/2, padded_rects))
-        rectw = list (map (lambda x: x['dx'], padded_rects))
-        recth = list (map (lambda x: x['dy'], padded_rects))
-        files = list (map (lambda x: x.path, grouped_obj))
-        size = list (map (lambda x: x.size, grouped_obj))
-        #children = list (map (lambda x: ','.join (map (lambda x: x[1], x.children)) if x.children else x.section, grouped_obj))
-        legend = list (map (lambda x: '{} ({})'.format (x.path, x.size), grouped_obj))
-        source = ColumnDataSource(data=dict(
-            left=left,
-            top=top,
-            x=rectx,
-            y=recty,
-            width=rectw,
-            height=recth,
-            file=files,
-            size=size,
-#            children=children,
-            legend=legend,
-        ))
+    diffs = []
+    for k in shared_keys:
+        delta = new[k] - old[k]
+        if delta == 0:
+            continue
+        diffs.append((delta, k))
 
-        hover = HoverTool(tooltips=[
-            ("size", "@size"),
-            ("file", "@file"),
-#            ("symbol", "@children"),
-        ])
+    for k in new_keys:
+        diffs.append((new[k], k))
 
+    for k in old_keys:
+        diffs.append((-old[k], k))
 
-        p = figure(title='Linker map for section {} ({} bytes)'.format (s.section, totalsize),
-                plot_width=width, plot_height=height,
-                tools=[hover,'pan','wheel_zoom','box_zoom','reset'],
-                x_range=(0, width), y_range=(0, height))
+    if diffs:
+        print('Object|Change (bytes)')
+        print('------|--------------')
+        for change, obj in sorted(diffs):
+            sign = "+" if change > 0 else "-"
+            print(f'{obj}|{sign}{abs(change)}')
 
-        p.xaxis.visible = False
-        p.xgrid.visible = False
-        p.yaxis.visible = False
-        p.ygrid.visible = False
-
-        palette = inferno(len(grouped_obj))
-        mapper = CategoricalColorMapper (palette=palette, factors=allFiles)
-        p.rect (x='x', y='y', width='width', height='height', source=source, color={'field': 'file', 'transform': mapper}, legend='legend')
-
-        # set up legend, must be done after plotting
-        p.legend.location = "top_left"
-        p.legend.orientation = "horizontal"
-
-        plots.append (p)
-    show (column (*plots, sizing_mode="scale_width"))
+        print(f'Total|{sign}{abs(diff)}')
 
 def parse_args():
     parser = argparse.ArgumentParser(description="Parse a map file into a bokeh diagram", epilog='''
@@ -183,12 +137,10 @@ def parse_args():
 
     linkermapviz pinetime-app-1.0.0.map --ignore-files liblvgl.a libnimble.a
     ''')
-    parser.add_argument("fname")
-    parser.add_argument("--print-largest", default=10, help="Print the N largest objects", type=int)
-    parser.add_argument("--ignore-files", nargs='+', help="files to ignore, example: liblvgl.a libnimble.a")
+    parser.add_argument("old")
+    parser.add_argument("new")
     args = parser.parse_args()
-    main(args.fname, args.ignore_files or [], args.print_largest)
+    main(args.old, args.new)
 
 if __name__ == '__main__':
     parse_args()
-
